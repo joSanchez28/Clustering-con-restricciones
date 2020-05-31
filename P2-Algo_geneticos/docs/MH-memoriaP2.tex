@@ -1,0 +1,626 @@
+\documentclass[11pt,a4paper]{article}
+
+% Packages
+\usepackage[utf8]{inputenc}
+\usepackage[spanish, es-tabla]{babel}
+\usepackage{caption}
+\usepackage{listings}
+\usepackage{adjustbox}
+%\usepackage{enumitem}
+\usepackage{boldline}
+\usepackage{amssymb, amsmath}
+\usepackage[margin=1in]{geometry}
+\usepackage{xcolor}
+%\usepackage{soul}
+\usepackage{enumerate}
+\usepackage{hyperref}
+\usepackage{graphics, graphicx, float}
+\usepackage{minted}
+
+% Meta
+\title{Problema de Agrupamiento con Restricciones (PAR)
+	\\\medskip \large Técnicas de Búsqueda basadas en Poblaciones para el PAR \\\medskip
+	\large Metaheurísticas: Práctica 2.b, Grupo MH2 (Jueves de 17:30h a 19:30h)}
+\author{Jorge Sánchez González - 75569829V \\ jorgesg97@correo.ugr.es}
+\date{ \today }
+
+% Custom
+\providecommand{\abs}[1]{\lvert#1\rvert}
+\setlength\parindent{0pt}
+\definecolor{Light}{gray}{.90}
+\newcommand\ddfrac[2]{\frac{\displaystyle #1}{\displaystyle #2}}
+\setlength{\parindent}{1.5em} %sangria
+
+% Displaying code with lstlisting
+\lstset { %
+	language=C++,
+	backgroundcolor=\color{black!5}, % set backgroundcolor
+	basicstyle=\footnotesize,% basic font setting
+}
+
+\usepackage[ruled]{algorithm2e}
+
+
+\begin{document}	
+	
+	\maketitle 
+	\newpage
+	\tableofcontents
+	\newpage
+	
+	
+	\section{El problema}
+	
+	\subsection{Descripción del problema}\label{sec:problema}
+	El \textbf{agrupamiento} o \textbf{análisis de clusters} clásico (en inglés, \emph{clustering}) es un problema que persigue la clasificación de objetos de acuerdo a posibles similitudes entre ellos. Así, se trata de una técnica de aprendizaje no supervisado que permite clasificar en grupos (desconocidos a priori) objetos de un conjunto de datos que tienen características similares.
+	
+    El \textbf{Problema del Agrupamiento con Restricciones (PAR)} (en
+    inglés, Constrained Clustering, CC) es una
+    generalización del problema del agrupamiento clásico.
+    Permite incorporar al proceso de agrupamiento un nuevo tipo
+    de información: las restricciones. Al incorporar esta información la tarea de aprendizaje deja de ser no supervisada y se convierte en semi-supervisada. 
+    
+    El problema consiste en, dado un conjunto de datos $X$ con $n$ instancias, encontrar una partición $C$ del mismo que minimice la desviación general y cumpla con las restricciones del conjunto de restricciones $R$. En nuestro caso concreto, solo consideramos restricciones de instancia (Must-Link o Cannot-Link) y todas ellas las interpretaremos como restricciones débiles (Soft); con lo que la partición $C$ del conjunto de datos $X$ debe minimizar el número de restricciones incumplidas pero puede incumplir algunas. Formalmente, buscamos
+    $$ \text{Minimizar } f = \hat{C} + \lambda * infeasibility$$
+	
+	donde:
+	\begin{itemize}
+		\item $C$ es una partición (una solución al problema), que consiste en una asignación de cada instancia a un cluster.
+		\item $\hat{C}$ es la desviación general de la partición $C$, que se define como la media de las desviaciones intra-cluster.
+		\item $infeasibility$ es el número de restricciones que $C$ incumple.
+		\item $\lambda$ es un hyperparámetro a ajustar (en función de si le queremos dar más importancia a las restricciones o a la desviación general).
+		
+	\end{itemize}
+
+	\subsection{Conjuntos de datos considerados}
+	Trabajaremos con 6 instancias del PAR generadas a partir de los 3 conjuntos de datos siguientes:
+	\begin{enumerate}
+        \item Iris: Información sobre las características de tres tipos de flor de Iris. Se trata de 150 instancias con 4 características por cada una de ellas. Tiene 3 clases ($k = 3$).
+        \item Ecoli: Contiene medidas sobre ciertas características de diferentes tipos de células. Se trata de 336 instancias con 7 características. Tiene 8 clases ($k = 8$).
+        \item Rand: Está formado por tres agrupamientos bien diferenciados generados en base a distribuciones normales ($k = 3$). Se trata de 150 instancias con 2 características.
+        \item Newthyroid: Contiene medidas tomadas sobre la glándula tiroides de múltiples pacientes. Presenta 3 clases distintas ($k = 3$) y se trata de 215 instancias con 5 características.
+  \end{enumerate}
+    
+    Para cada conjunto de datos se trabaja con 2 conjuntos de restricciones, correspondientes al 10\% y 20\% del total de restricciones posibles.
+	
+	
+	\section{Descripción de la aplicación de los algoritmos}\label{sec:comun}
+	
+	En esta sección se describen las consideraciones comunes a los distintos algoritmos. Se incluyen la representación de las soluciones, la función objetivo y los operadores comunes a los distintos algoritmos. Ya que los únicos puntos en común de todos los algoritmos (incluyendo los de la práctica 1 y la 2) son la función objetivo y la representación de las soluciones, no estudiaremos ningún operador común. No se han incluido tampoco los detalles específicos de ninguno de los algoritmos en esta sección.  \\
+	
+	Una primera consideración general es el hecho de que la distancia usada como medida de cercanía (o similitud) entre las distintas instancias y clusters es la distancia euclídea. \\
+	
+	El lenguaje utilizado para la implementación de la práctica ha sido \textbf{Python}. 
+	
+	\subsection{Representación de la soluciones}
+	Las soluciones a nuestro problema serán las llamadas \textit{particiones}, que asignan a cada instancia del conjunto de datos uno de los $k$ clusters. Aunque existen varias formas de representar una partición, por simplicidad se ha decidido utilizar la misma forma en todos los algoritmos. En concreto, respresentamos una partición de un conjunto de $n$ instancias en $k$ clusters con una lista $S$ de tamaño $n$ cuyos valores son enteros $S_i \in \{0,1,2,...,k-1\}$. Así, el valor de la posición $i$ del vector, $S_i$, indica el cluster al que la i-ésima instancia, $x_i$, ha sido asignada. 
+	
+	Por verlo con un ejemplo, la representación será de la siguiente forma:
+
+	\begin{lstlisting}
+	partition = [0,0,0,5,0,1,1,1,1,1,2,3,1,1,1,...]
+	\end{lstlisting}
+	Esta partición indicaría, por ejemplo, que la instancia $x_0$ se ha asignado al cluster número 0, $c_0$, y que la instancia $x_3$ se ha asignado al cluster $c_5$. 
+	
+	Cabe mencionar también que durante la ejecución de los algoritmos, las particiones en proceso de construcción tendrán sus valores en $\{-1,0,1,2,...,k-1\}$. Cuando una posición $i$ tenga el valor $-1$, esto indicará que aún no se le ha asignado ningún cluster a la instancia $x_i$.
+	
+	\subsection{Función objetivo}
+	Como hemos visto en la seccion anterior (\ref{sec:problema}) para calcular la función objetivo se necesita saber tanto la desviación general de la partición, $\hat{C}$, como el número de restricciones que esta viola, $infeasibility$. Se muestra a continuación su expresión y su pseudocódigo. 
+	
+	$$f(C) = \hat{C} + \lambda * infeasibility$$
+
+	\begin{algorithm}
+	 	\caption{objective\_function}
+	 	\KwData{Conjunto de datos $X$, partición en forma de vector $S$, lista de restricciones $constraints\_list$, lista de centroides $centroids$, hiperparámetro $lambda$}
+	 	\KwResult{function\_value}
+	 	\Begin{
+	 	    dev $\leftarrow$ general\_deviation(X, S, centroids) \\
+	 	    inf $\leftarrow$ $infeasibility$(S, constraints\_list) \\
+            function\_value $\leftarrow$ dev + lambda * inf\\
+	 		return function\_value \\
+	 	}
+	\end{algorithm}
+	
+	El hyperparámetro $\lambda$ que se usará por defecto será el mínimo indicado en las diapositivas del Seminario 2, es decir, el cociente entre la distancia máxima existente en el conjunto de datos y el número de restricciones del problema. 
+	
+	Cabe mencionar que la función objetivo como tal será usada por todos los algoritmos excepto por el Greedy, que usará la desviación general y la infactibilidad en diferentes etapas (y por separado). De cualquier manera, la calidad de las soluciones de todos los algoritmos van a ser evaluadas con esta función.
+	\subsubsection{Desviación general de una partición}
+	La desviación general de una partición se define como la media de las distancias medias intra-cluster, esto es,
+	$$\hat{C} = \frac{1}{k} \sum_{c_i \in C} \hat{c_i}.$$ Donde las distancias medias intra-cluster se definen a su vez como $$\hat{c_i} = \frac{1}{|c_i|} \sum_{\vec{x_j} \in c_i}distance(\vec{x_j}, \vec{\mu_i}).$$ En pseudocódigo:
+	
+    \begin{algorithm} 
+	 	\caption{mean\_dist\_intra\_cluster} \label{algo:mean-dist-intra-cluster}
+	 	\KwData{Conjunto de datos $X$, partición $S$, cluster del que queremos calcular su distancia intra cluster $cluster\_id$, centroide del cluster $centroid$}
+	 	\KwResult{distance\_intra\_cluster}
+	 	\Begin{
+	 	    $Y$ $\leftarrow$ instancias\_asignadas\_al\_cluster(X, S, cluster\_id)\\
+	 	    \If{centroid == None}{
+	 	            centroid = mean(Y, axis = 0)\\
+	 	    }
+	 	    distances $\leftarrow$ list([ ]) \\
+	 	    \ForEach{ $y \in Y$ }{
+	 	        distances.append(distance(y, centroid))
+	 	    }
+	 	    distance\_intra\_cluster $\leftarrow$ media(distances) \\
+	 		return distance\_intra\_cluster \\
+	 	}
+	\end{algorithm}
+	\begin{algorithm}
+	 	\caption{general\_deviation}
+	 	\KwData{Conjunto de datos $X$, partición $S$, lista de centroides $centroids$}
+	 	\KwResult{deviation}
+	 	\Begin{
+	 	    cluster\_ids $\leftarrow$ \{0,1,...,longitud(centroids)-1\} \\
+	 	    intra\_cluster\_distances $\leftarrow$ list([ ]) \\
+	 	    \ForEach{$c_{id} \in cluster\_ids$}{
+	 	        d $\leftarrow$ mean\_dist\_intra\_cluster(X, S, $c_{id}$, centroids[$c_{id}$])\\
+	 	        intra\_cluster\_distances.append(d)\\
+	 	    }
+	 	    deviation $\leftarrow$ media(intra\_cluster\_distances) \\
+	 		return deviation \\
+	 	}
+	\end{algorithm}
+	Cabe comentar que la lista de centroides que se pasa como argumento es opcional, y en caso de no pasarse se calculará cada centroide directamente a la hora de calcular su distancia media intra-cluster asociada (como indica el condicional \textit{if} en la función mean\_dist\_intra\_cluster (\ref{algo:mean-dist-intra-cluster})).
+	
+    \subsubsection{Infactibilidad}
+    La infactibilidad de una partición ($infeasibility$) se define como el número de restricciones que incumple. Por ello para calcularla utilizamos una función auxiliar, \textit{V}, que nos va a decir, dada una partición, y un par de instancias con un valor de restricción (-1,0 o 1), si la partición incumple alguna restricción asociada a las dos instancias. Por otro lado, cabe destacar también que usamos la lista de restricciones, y no la matriz de restricciones, para recorrer todas las restricciones para calcular el $infeasibility$ de una manera más eficiente.
+    \begin{algorithm}
+	 	\caption{V (si se incumple alguna restricción o no)}
+	 	\KwData{Índice $i$ de la instancia $x_i$, índice $j$ de la instancia $x_j$, partición $S$, valor de restricción $constraint\_value$)}
+	 	\KwResult{incumplimiento}
+	 	\Begin{
+	 	    incumplimiento\_ML $\leftarrow$ ($constraint\_value == 1$ and $S\left[i\right] \neq  S\left[j\right]$)\\
+	 	    incumplimiento\_CL $\leftarrow$ ($constraint\_value == -1$ and $S\left[i\right] ==  S\left[j\right]$)\\
+	 	    incumplimiento $\leftarrow$ (incumplimiento\_ML or incumplimiento\_CL) \\
+	 		return incumplimiento \\
+	 	}
+	\end{algorithm}
+	\begin{algorithm}
+	 	\caption{$infeasibility$}
+	 	\KwData{Partición $S$, lista de restricciones $constraints\_list$}
+	 	\KwResult{infeasibility}
+	 	\Begin{
+	 	    infeasibility $\leftarrow$ 0\\
+	 	    \ForEach{ $(i,j,contraint\_value) \in $ constraints\_list}{
+	 	        infeasibility $\leftarrow$ infeasibility + V(i, j, S, constraint\_value) \\
+	 	    }
+	 		return infeasibility \\
+	 	}
+	\end{algorithm}
+	\section{Algoritmos}
+	En esta práctica se han usado nueve algoritmos. El Greedy (\textit{COPKM}) y el de Búsqueda Local (ya implementados en la práctica 1) se han ejecutado sobre el nuevo conjunto de datos \textit{Newthyroid}. El resto (\textit{AGG-UN}, \textit{AGG-SF}, \textit{AGE-UN}, \textit{AGE-SF}, \textit{AM-(10,1.0)}, \textit{AM-(10,0.1)} y \textit{AM-(10,0.1mej)}) se han implementado y se han ejecutado sobre todos los conjuntos de datos. Para la descripción de los dos primeros algoritmos se hace referencia a la memoria de la práctica anterior. El resto de algoritmos (los de la práctica 2) son técnicas de búsqueda basadas en poblaciones y se describen a continuación mostrando pseudocódigo y comentando los aspectos más importantes. 
+	
+	Un primer aspecto importante en la implementación de todos ellos es que se trabaja con poblaciones con tripletas de la forma 
+	$$(particion, valor\_funcion\_objetivo, contadores\_de\_asignaciones)$$
+	
+	donde $contadores\_de\_asignaciones$ es un diccionario utilizado para comprobar que no se rompe la restricción fuerte (de no asignar ninguna instancia a algún cluster) cada vez que se crea o modifica una partición y $valor\_funcion\_objetivo$ se emplea para ordenar las particiones en función de su evaluación en la función objetivo.
+	\subsection{Operadores de cruce}
+	En primer lugar vamos a describir los operadores de cruce que se usan en estos algoritmos, ya que son comunes a todos ellos. Los operadores de cruce se usarán para crear nuevas soluciones (o particiones) combinando soluciones que ya teníamos. En concreto en esta práctica se emplean dos operadores de cruce para representación real, explicados en el Seminario 3. Uno de ellos será el operador uniforme mientras que el otro será el de cruce por
+    segmento fijo.
+    \subsubsection{Operador de cruce uniforme}
+    
+    \begin{algorithm}[H]
+	 	\caption{uniform\_cross\_operator}
+	 	\KwData{Partición padre 1 \textit{father1}, partición padre 2 \textit{father2}}
+	 	\KwResult{Partición hija \textit{child}}
+	 	\Begin{
+	 	    n $\leftarrow$ longitud(father1)\\
+	 	    RSI $\leftarrow$ list([0,1,...,n-1])\\
+	 	    RSI $\leftarrow$ RandomShuffle(RSI) \\
+	 	    child $\leftarrow$ list(longitud = n, valores = 0)\\
+	 	    \ForEach{$i \in \{0,1,..., truncar(n/2)\}$}{
+	 	        child[RSI[i]] $\leftarrow$ father1[RSI[i]]
+	 	    }
+	 	    \ForEach{$i \in \{truncar(n/2),...,n-1\}$}{
+	 	        child[RSI[i]] $\leftarrow$ father2[RSI[i]]
+	 	    }
+            return child
+	 	}
+	\end{algorithm} 
+    Como se observa en el pseudocódigo, este operador consiste en crear una partición hijo como resultado de coger la mitad de los genes escogidos de forma aleatoria de un primer padre y la otra mitad de los genes de un segundo padre (cuando el número de genes es impar se toma un gen más del segundo padre).
+    \subsubsection{Operador de cruce por segmento fijo}
+    
+     \begin{algorithm}[ht]
+	 	\caption{fixed\_segment\_operator} \label{algo:SF}
+	 	\KwData{Partición padre 1 \textit{father1}, partición padre 2 \textit{father2}}
+	 	\KwResult{Partición hija \textit{child}}
+	 	\Begin{
+	 	    n $\leftarrow$ longitud(father1)\\
+	 	    segment\_ini $\leftarrow$ entero\_aleatorio\_entre(0, n-1) \\
+            segment\_lenght $\leftarrow$ entero\_aleatorio\_entre(0, n-1) \\
+	 	    segment\_indices $\leftarrow$ [i mod(n) for $i \in$ \{segment\_ini,..., segment\_ini + segment\_lenght\}] \\
+	 	    child $\leftarrow$ list(longitud = n, valores = -1)\\
+	 	    
+	 	    \ForEach{$i \in segment\_indices$}{
+	 	        child[i] $\leftarrow$ father1[i] \\
+	 	    }
+	 	    -Para el resto de genes que no están en el segmento: Cruce uniforme \\
+	 	    RSI $\leftarrow$ indices\_con\_valor(-1, child) \\
+	 	    RSI $\leftarrow$ RandomShuffle(RSI) \\
+	 	    $n_2$ $\leftarrow$ longitud(RSI)\\
+	 	    \ForEach{$i \in \{0,1,..., truncar(n_2/2)\}$}{
+	 	        child[RSI[i]] $\leftarrow$ father1[RSI[i]]
+	 	    }
+	 	    \ForEach{$i \in \{truncar(n_2/2),...,n_2-1\}$}{
+	 	        child[RSI[i]] $\leftarrow$ father2[RSI[i]]
+	 	    }
+            return child
+	 	}
+	\end{algorithm} 
+	Este operador se basa en tomar un ``segmento de genes'' que empieza en una posición aleatoria y tiene una longitud también aleatoria. Dicho segmento se copia tal cual del primer padre a la partición hija. El resto de genes se obtienen con el operador de cruce (aplicado tan solo a los genes que no estaban en el segmento). Este operador es menos disruptivo, pues la partición hija copia un mayor número de genes del padre 1 y es más probable que se parezca bastante a este. Se describe en pseudocódigo en el bloque siguiente (\ref{algo:SF}).
+	\subsubsection{Reparación de soluciones}
+	Ambos operadores de cruce podrían dar lugar a particiones que rompieran la restricción fuerte de que cada cluster tenga al menos una instancia asignada, por lo que necesitamos una función que las repare en dicho caso, y que se puede describir en pseudocódigo como se observa en el bloque \ref{algo:repair}.\\
+	
+	\begin{algorithm}[H]
+	 	\caption{repair\_partition}\label{algo:repair}
+	 	\KwData{Partición a reparar \textit{S}, diccionario con número de instancias asignadas a cada cluster \textit{assignations\_counter}, número de clusters \textit{k}}
+	 	\KwResult{Partición reparada \textit{S} y diccionario de asignaciones actualizado \textit{assignations\_counter}}
+	 	\Begin{
+	 	    n $\leftarrow$ longitud(S)\\
+	 	    \ForEach{$i \in \{0,1,...,k-1\}$}{
+	 	        \If{assignations\_counter[i] == 0}{
+	 	            gen\_idx $\leftarrow$ entero\_aleatorio\_entre(0,n-1) \\ \While{assignations\_counter[S[gen\_idx]] $\leq 1$}{
+	 	                gen\_idx $\leftarrow$ entero\_aleatorio\_entre(0,n-1) \\
+	 	            }
+	 	            assignations\_counter[S[gen\_idx]] -= 1 \\
+                    S[gen\_idx] $\leftarrow$ i \\
+                    assignations\_counter[i] $\leftarrow$ 1 \\
+	 	        }
+	 	    }
+            return S, assignations\_counter
+	 	}
+	\end{algorithm} 
+	Básicamente la reparación de particiones consiste en asignar una instancia escogida de forma aleatoria a los clusters que no tienen ninguna instancia asignada (siempre comprobando que al hacer esta nueva asignación no estamos dejando a otro cluster con $0$ instancias asignadas).
+    
+	\subsection{Algoritmos Genéticos}
+	Ahora sí, nos lanzamos a describir los algoritmos propiamente. Empezamos con los algoritmos genéticos, dentro de los cuáles tendremos los generacionales y los estacionarios. Ambos van a generar su población inicial de la misma forma; como se describe a continuación.
+	
+	\begin{algorithm}[H]
+	 	\caption{generate\_initial\_population}
+	 	\KwData{Conjunto de datos $X$, lista de restricciones $const\_list$, número de clusters $k$, hiperparámetro $\lambda$, tamaño de la población $population\_size$, y contador de evaluaciones de la función objetivo $counter$}
+	 	\KwResult{Población inicial generada $current\_population$ y contador de evaluaciones de la función objetivo actualizado $counter$}
+	 	\Begin{
+	 	    current\_population $\leftarrow$ list([ ]) \\
+            \ForEach{$i \in \{0,1,...,population\_size-1\}$}{
+                -Declaramos diccionarios assignations\_counter para vigilar cuantas instancias tiene cada cluster (para asegurar que nunca tienen 0) en cada partición \\
+                valid\_partition $\leftarrow$ False \\
+                \While{not valid\_partition}{
+                    S $\leftarrow$ generate\_initial\_sol(X, k) \\
+                    assignations\_counter $\leftarrow$ cuenta\_asignaciones(S) \\
+                    \If{asignaciones\_validas(assignations\_counter)}{
+                        valid\_partition $\leftarrow$ True \\
+                    }
+                }
+                func\_value $\leftarrow$ objective\_func(X, S, const\_list, $\lambda$)\\
+                counter $\leftarrow$ counter + 1 \\
+                current\_population.append([S, func\_value, assignations\_counter])
+            }
+            return current\_population, counter
+	 	}
+	\end{algorithm} 
+	Se trata de generar $M=population\_size$ particiones de forma aleatoria y comprobando que cumplen la restricción fuerte de que no haya ningún cluster con ninguna instancia asignada. Esta función hace uso de la función \textit{generate\_initial\_sol(X, k)}, que ya implementamos en la práctica 1 y que genera una partición de forma aleatoria como se describe en el siguiente pseudocódigo.
+	
+    \begin{algorithm}[H]
+	 	\caption{generate\_initial\_sol}
+	 	\KwData{Conjunto de datos $X$, número de clusters $k$}
+	 	\KwResult{Una partición $S$}
+	 	\Begin{
+	 	    n $\leftarrow$ longitud(X);
+	 	    S $\leftarrow$ list([ ])\\
+	 	    \ForEach{ $i \in \{0,1,...,n-1\}$}{
+	 	        S.append(entero\_aleatorio\_entre(0,k-1))\\
+	 	    }
+	 		return S \\
+	 	}
+	\end{algorithm}
+	
+	\subsubsection{Algoritmos Genéticos Generacionales}
+	Vemos ahora el pseudocódigo de una parte crucial de los algoritmos genéticos generacionales; la siguiente función es la que se encarga de pasar de una población $P(t)$ a la siguiente generación $P(t+1).$ Dentro de este bloque de pseudocódigo se encuentran descritos el proceso de selección (mediante el torneo binario), de cruce y de mutación. Cabe destacar que el operador de cruce (ya sea el uniforme o el de segmento fijo) es simplemente pasado como argumento a la función. 
+	\begin{algorithm}
+	 	\caption{new\_generation}
+	 	\KwData{Conjunto de datos $X$, lista de restricciones $const\_list$, número de clusters $k$, hiperparámetro $\lambda$, tamaño de la población $population\_size$, contador de evaluaciones $counter$, número de cruces esperados $n\_cross\_expected$, número de instancias $n$, operador de cruce $cross\_operator$, número de mutaciones esperadas $n\_mutations\_expected$, población actual $current\_population$}
+	 	\KwResult{Nueva población $new\_population$ y contador de evaluaciones $counter$}
+	 	\Begin{
+            new\_population $\leftarrow$ list([ ]) \\
+            1-Selección \\
+            \ForEach{$i \in \{0,1,...,population\_size-1\}$}{
+                -Torneo binario - Aprovechamos que la población está ordenada \\
+                father\_idx $\leftarrow$ minimo(RandomSample($\{0,1,...,population\_size-1\}$, 2)) \\
+                new\_population.append(current\_population[father\_idx])  \\
+            }
+            2-Aplicamos el operador de cruce a las parejas de forma ordenada \\
+            \ForEach{$i \in \{0,1,...,n\_cross\_expected-1\}$}{
+                father1 $\leftarrow$ new\_population[i*2][0] \\
+                father2 $\leftarrow$  new\_population[i*2 + 1][0] \\
+                \ForEach{$j \in \{0,1\}$}{
+                    child\_partition $\leftarrow$ cross\_operator(father1, father2)\\
+                    assignations\_counter $\leftarrow$ cuenta\_asignaciones(child\_partition) \\
+                    \If{not asignaciones\_validas(assignations\_counter)}{
+                        repair\_partition(child\_partition, assignations\_counter, k)\\
+                    }
+                    -No llamamos aún a la función objetivo porque sería un malgasto si estas nuevas soluciones mutaran... \\
+                    new\_population[i*2 + j] $\leftarrow$ [child\_partition, -1, assignations\_counter] \\
+                }
+            }
+            3-Mutaciones:
+            \ForEach{$i \in \{0,1,...,n\_mutations\_expected-1\}$}{
+                cromo\_idx $\leftarrow$ entero\_aleatorio\_entre(0,population\_size-1) \\
+                gen\_idx $\leftarrow$ entero\_aleatorio\_entre(0,n-1) \\
+                -Comprobamos que la mutación en el gen elegido no rompe las restricciones (fuertes)\\
+                \While{new\_population[cromo\_idx][2][new\_population[cromo\_idx][0][gen\_idx]] $\leq$ 1}{
+                    gen\_idx $\leftarrow$ entero\_aleatorio\_entre(0,n-1) \\
+                }
+                new\_population[cromo\_idx][2][new\_population[cromo\_idx][0][gen\_idx]] -= 1 \\
+                -Cambiamos de forma aleatoria el cluster asociado a esta instancia\\
+                new\_population[cromo\_idx][0][gen\_idx] $\leftarrow$ (new\_population[cromo\_idx][0][gen\_idx] + entero\_aleatorio\_entre(1,k-1)) mod k \\
+                new\_population[cromo\_idx][2][new\_population[cromo\_idx][0][gen\_idx]] += 1 \\
+                new\_population[cromo\_idx][1] $\leftarrow$ -1 \\
+            }
+            4-Llamamos a la función objetivo el número de veces estrictamente necesario (solo para los cromosomas nuevos) \\
+            \ForEach{cromo $ \in $ new\_population}{
+                \If{cromo[1] == -1}{
+                    cromo[1] $\leftarrow$ objective\_func(X, cromo[0], const\_list, $\lambda$)\\
+                    counter += 1 \\
+                }
+            }
+            return new\_population, counter \\
+    	 	}
+	\end{algorithm}
+	
+	Ahora sí, hemos descrito todas las funciones que usaremos dentro de la implementación principal del algoritmo.
+	
+    \begin{algorithm}
+	 	\caption{generational\_genetic\_algo}
+	 	\KwData{Conjunto de datos $X$, matriz de restricciones $const\_matrix$, lista de restricciones $const\_list$, número de clusters $k$, hiperparámetro $\lambda$, operador de cruce $cross\_operator$, tamaño de la población $population\_size$, probabilidad de cruce $cross\_prob$, probabilidad de mutación $mutation\_prob$}
+	 	\KwResult{La mejor partición de la población final}
+	 	\Begin{
+            n $\leftarrow$ longitud(X) \\
+            -Número esperado de cruces (2 hijos por cruce) \\
+            n\_cross\_expected $\leftarrow$ truncar(cross\_prob * population\_size / 2) \\
+            n\_mutations\_expected $\leftarrow$  truncar(mutation\_prob * population\_size * n) \\
+            counter $\leftarrow$  0 -Contará el número de evaluaciones de la función objetivo \\
+            1-Generamos la población inicial: \\
+            current\_population, counter $\leftarrow$  generate\_initial\_population(X, const\_list, k, $\lambda$, population\_size, counter) \\
+            -Ordenamos la población según la calidad de los cromosomas (de mejor a peor) \\
+            ordenar\_según\_func\_objetivo(current\_population) \\
+            \While{counter $<$ 100000}{
+                2-Generamos la población siguiente \\
+                new\_population, counter $\leftarrow$  new\_generation(X, const\_list, k, $\lambda$, population\_size, counter, n\_cross\_expected, n, cross\_operator, n\_mutations\_expected, current\_population) \\
+                ordenar\_según\_func\_objetivo(new\_population) \\
+                3-Aplicamos el elitismo \\
+                \If{current\_population[0][1] $<$ new\_population[0][1]}{ 
+                    new\_population[population\_size-1] $\leftarrow$  current\_population[0] \\
+                    ordenar\_según\_func\_objetivo(new\_population) \\
+                }
+                current\_population $\leftarrow$  new\_population \\
+            }
+            return current\_population[0][0]      \\
+            
+    	 	}
+	\end{algorithm}
+	
+	Del anterior pseudocódigo caben destacar dos aspectos. El primero de ellos es que el algoritmo sigue generando nuevas poblaciones (a partir de la anterior) hasta que hayamos evaluado la función objetivo $100000$ veces. Puesto que la comprobación del contador de evaluaciones solo se hace cada vez que terminamos el reemplazamiento de la población (en el bucle $while$), tendremos que se pueden sobrepasar las $100000$ pudiendo llegar a 
+	$$(100000 - 1) +  n\_cross\_expected + n\_mutations\_expected$$ evaluaciones (esto pasará también con el resto de algoritmos; en el foro de esta práctica se nos indicó que esto no sería ningún problema). El segundo aspecto que cabe señalar es la aplicación del elitismo, que se produce justo después de obtener la siguiente generación de individuos y que se basa en conservar el mejor elemento de la población anterior si este es mejor que todos los de la nueva población. Con este segundo aspecto se completa la descripción del esquema de evolución y reemplazamiento del algoritmo.
+	
+	Para utilizar particularmente los algoritmos \textit{AGG-UN} y \textit{AGG-SF} bastará con usar este algoritmo pasándole como argumento los operadores de cruce \textit{uniform\_cross\_operator} y \textit{fixed\_segment\_operator} respectivamente (ambos ya han sido presentados). El tamaño de la población y las probabilidades de cruce y de mutación usados en ambas variantes son las que se nos indican en el guión de la práctica, $50$, $0.7$ y $0.001$ respectivamente.
+	
+	\subsection{Algoritmos Genéticos Estacionarios}
+	Los algoritmos genéticos estacionarios no se basarán en generar nuevas poblaciones que sustituyan a las anteriores sucesivamente; sino que consistirán en generar tan solo dos nuevos individuos en cada iteración, de forma que estos reemplacen a los dos peores de la población (si son mejores que ellos en términos de la función objetivo). Se muestra el pseudocódigo en la siguiente página (algoritmo \ref{algo:stable}). 
+	
+	En él se pueden observar claramente los esquemas de evolución y reemplazamiento. Como comentábamos, solo dos individuos son generados en cada iteración; además es importante notar que esta vez solo estos dos individuos son los que pueden mutar (en el algoritmo generacional podían mutar todos los individuos de la población, incluso aquellos que no habían sido producto de un cruce). También cabe señalar que la probabilidad de cruce en este algoritmo es 1 (es por ello que no se recibe como argumento). Finalmente cabe comentar que para tener en cuenta la probabilidad de mutación se ha elegido por simplicidad trabajar con la probabilidad de mutación a nivel de cromosoma $$cromo\_mutation\_prob = mutation\_prob * n\_genes,$$
+	generando para cada cromosoma resultante de un cruce un número aleatorio en $[0,1]$ y si sale menor que $cromo\_mutation\_prob$, mutando un gen aleatorio de ese cromosoma.
+	
+	De nuevo, para utilizar particularmente los algoritmos \textit{AGE-UN} y \textit{AGE-SF} bastará con usar este algoritmo pasándole como argumento los operadores de cruce \textit{uniform\_cross\_operator} y \textit{fixed\_segment\_operator} respectivamente. Además, el tamaño de la población y la probabilidad de mutación por gen que se han usado son $50$ y $0.001$, como se indicaba en el guión de la práctica.
+	\\
+	
+	\begin{algorithm}[H]
+	 	\caption{stable\_genetic\_algo} \label{algo:stable}
+	 	\KwData{Conjunto de datos $X$, lista de restricciones $const\_list$, número de clusters $k$, hiperparámetro $\lambda$, operador de cruce $cross\_operator$, tamaño de la población $population\_size$, probabilidad de mutación $mutation\_prob$}
+	 	\KwResult{La mejor partición de la población final}
+	 	\Begin{
+            n $\leftarrow$ longitud(X) \\
+            cromo\_mutation\_prob $\leftarrow$ mutation\_prob * n \\
+            counter $\leftarrow$ 0 \\
+            1-Generamos la poblacion inicial \\
+            current\_population, counter $\leftarrow$ generate\_initial\_population(X, const\_list, k, $\lambda$, population\_size, counter) \\
+            ordenar\_según\_func\_objetivo(current\_population) \\
+            \While{counter $< 100000$}{ 
+                2-Seleccionamos dos individuos mediante torneo binario \\
+                parents $\leftarrow$ list([ ]) \\
+                \ForEach{$i \in \{0,1\}$}{ 
+                    -Torneo binario - Aprovechamos que la población está ordenada  \\
+                    father\_idx $\leftarrow$ minimo(RandomSample($\{0,1,...,population\_size\}$), 2)) \\
+                    parents.append(current\_population[father\_idx]) \\
+                }
+                children $\leftarrow$ list([ ]) \\
+                \ForEach{$i \in \{0,1\}$}{
+                        3-Aplicamos el operador de cruce a la pareja de padres \\
+                        child\_partition $\leftarrow$ cross\_operator(parents[0][0], parents[1][0])\\
+                        assignations\_counter $\leftarrow$ cuenta\_asignaciones(child\_partition) \\
+                        \If{not asignaciones\_validas(assignations\_counter)}{
+                            repair\_partition(child\_partition, assignations\_counter, k)\\
+                        }
+                        4-Mutación según cierta probabilidad \\
+                        \If{real\_aleatorio\_entre(0,1) $\leq$ cromo\_mutation\_prob}{
+                            gen\_idx $\leftarrow$ entero\_aleatorio\_entre(0,n-1) \\
+                            -Aseguramos que cambiar el gen elegido no rompe la restricción fuerte\\ \While{assignations\_counter[child\_partition[gen\_idx]] $\leq 1$}{
+                                gen\_idx $\leftarrow$ entero\_aleatorio\_entre(0,n-1) \\
+                            }
+                            assignations\_counter[child\_partition[gen\_idx]] -= 1 \\
+                            child\_partition[gen\_idx] $\leftarrow$ (child\_partition[gen\_idx] + entero\_aleatorio\_entre(1,k-1)) mod k \\
+                            assignations\_counter[child\_partition[gen\_idx]] += 1 \\
+                        }
+                        func\_value $\leftarrow$ objective\_func(X, child\_partition, const\_list, $\lambda$) \\
+                        counter += 1 \\
+                        children.append([child\_partition, func\_value, assignations\_counter]) \\
+                }
+                -Introducimos los hijos generados tras el cruce y la mutación si mejoran a los peores de la población\\
+                children.add\_list([current\_population[-2], current\_population[-1]]) \\
+                ordenar\_según\_func\_objetivo(children) \\
+                current\_population[-2] $\leftarrow$ children[0] \\
+                current\_population[-1] $\leftarrow$ children[1] \\
+                ordenar\_según\_func\_objetivo(current\_population) \\
+            }
+            return current\_population[0][0]  \\
+        }
+	\end{algorithm} 
+	
+	
+	
+	
+	\subsection{Algoritmos Meméticos}
+	Nuestro algoritmo memético consistirá en hibridar el algoritmo genético generacional que mejor resultado haya dado (que ya adelantamos que es el que utiliza el operador de cruce por segmento fijo, \textit{AGG-SF}) con un nuevo tipo de búsqueda local que denominamos búsqueda local suave (\textit{BLS}). Puesto que ya hemos descrito los algoritmos genéticos generacionales, pasamos a describir la búsqueda local suave.
+	
+	
+	\begin{algorithm}[H]
+	 	\caption{smooth\_local\_search} \label{algo:BLS} \label{algo:stable}
+	 	\KwData{Conjunto de datos $X$, lista de restricciones $const\_list$, partición desde la que empieza la búsqueda $S$, valor de la función objetivo con $S$, $current\_func\_value$, diccionario con el número de instancias asignadas por $S$ a cada cluster $assignations\_counter$, número de clusters $k$, número de fallos $max_failures$, contador de evaluaciones $counter$, hiperparámetro $\lambda$}
+	 	\KwResult{Mejor partición encontrada $S$, el valor de la función objetivo con $S$, $best\_func\_value$, su contador de asignaciones $assignations\_counter$ y el contador de evaluaciones actualizado $counter$}
+	 	\Begin{
+            n $\leftarrow$ longitud(X) \\
+            RSI $\leftarrow$ [0,1,...,n-1] \\
+            RSI $\leftarrow$ RandomShuffle(RSI) \\
+            failures $\leftarrow$ 0;
+            improvement $\leftarrow$ True;
+            best\_func\_value $\leftarrow$ current\_func\_value;
+            i $\leftarrow$ 0 \\
+            \While{(improvement or (failures $<$ max\_failures)) and $i < n$}{
+                improvement $\leftarrow$ False \\
+                -Asignar el mejor cluster posible al gen RSI[i] si cambiar este gen no rompe una restricción fuerte. \\
+                \If{assignations\_counter[S[RSI[i]]] $> 1$} {
+                    best\_cluster $\leftarrow$ S[RSI[i]] \\
+                    \ForEach{$j \in \{0,1,...,k-1\}$}{
+                        \If{j $\neq$ S[RSI[i]]}{
+                            S[RSI[i]] $\leftarrow$ j \\
+                            func\_value $\leftarrow$ objective\_func(X, S, const\_list, $\lambda$) \\
+                            counter += 1 \\
+                            \eIf{func\_value $<$ best\_func\_value}{
+                                assignations\_counter[best\_cluster] -=1 \\
+                                assignations\_counter[j] +=1 \\
+                                best\_func\_value $\leftarrow$ func\_value \\
+                                best\_cluster $\leftarrow$ j \\
+                                improvement $\leftarrow$ True \\
+                            }{
+                                -Si no es mejor, volvemos a la asignación anterior \\
+                                S[RSI[i]] $\leftarrow$ best\_cluster \\
+                            }
+                        }
+                    }
+                }
+                \If{improvement == False}{
+                    failures += 1 \\
+                }
+                i += 1 \\
+            }
+            return partition, best\_func\_value, assignations\_counter, counter \\
+
+        }
+	\end{algorithm} 
+	
+	
+	Presentamos también el pseudocódigo principal del memético, que comentaremos más abajo.
+	
+	\begin{algorithm}[H]
+	 	\caption{memetic\_algo} \label{algo:memetico}
+	 	\KwData{Conjunto de datos $X$, matriz de restricciones $const\_matrix$, lista de restricciones $const\_list$, número de clusters $k$, hiperparámetro $\lambda$, operador de cruce $cross\_operator$, tamaño de la población $population\_size$, probabilidad de cruce $cross\_prob$, probabilidad de mutación $mutation\_prob$, generaciones antes de ejecutar las BLS $generation\_per\_ls$, porcentaje de la población sobre el que hacer una BLS $perc\_ls$, si coger los mejores de la población en este porcentaje o no $best\_population$}
+	 	\KwResult{La mejor partición de la población final}
+	 	\Begin{
+            n $\leftarrow$ longitud(X) \\
+            n\_cross\_expected $\leftarrow$ truncar(cross\_prob * population\_size / 2) \\
+            n\_mutations\_expected $\leftarrow$  truncar(mutation\_prob * population\_size * n) \\
+            n\_solutions\_for\_local\_search $\leftarrow$ truncar(population\_size * perc\_ls) \\
+            max\_failures $\leftarrow$ truncar(0.1 * n) \\
+            counter $\leftarrow$  0 -Contará el número de evaluaciones de la función objetivo \\
+            1-Generamos la población inicial: \\
+            current\_population, counter $\leftarrow$  generate\_initial\_population(X, const\_list, k, $\lambda$, population\_size, counter) \\
+            ordenar\_según\_func\_objetivo(current\_population) \\
+            \While{counter $<$ 100000}{
+                \ForEach{generation $\in \{0,1,...,generation\_per\_ls-1\}$}{
+                    2-Generamos la población siguiente \\
+                    new\_population, counter $\leftarrow$  new\_generation(X, const\_list, k, $\lambda$, population\_size, counter, n\_cross\_expected, n, cross\_operator, n\_mutations\_expected, current\_population) \\
+                    ordenar\_según\_func\_objetivo(new\_population) \\
+                    3-Aplicamos el elitismo \\
+                    \If{current\_population[0][1] $<$ new\_population[0][1]}{ 
+                        new\_population[population\_size-1] $\leftarrow$ current\_population[0] \\
+                        ordenar\_según\_func\_objetivo(new\_population) \\
+                    }
+                    current\_population $\leftarrow$ new\_population \\
+                }
+                -Aplicamos la búsqueda local suave a la proporción de la población determinada por perc\_ls y best\_population.\\
+                \eIf{best\_population}{
+                    indices\_for\_ls $\leftarrow$ [0,1,...,n\_solutions\_for\_local\_search-1] \\
+                }{
+                    indices\_for\_ls $\leftarrow$ RandomSample(\{0,1,...,population\_size-1\}, n\_solutions\_for\_local\_search) \\
+                }
+                \ForEach{$i \in indices\_for\_ls$}{
+                    S, func\_value, assignations\_counter, counter $\leftarrow$ smooth\_local\_search(X, const\_list, current\_population[i][0], current\_population[i][1], current\_population[i][2], k, max\_failures, counter, $\lambda$) \\
+                    current\_population[i] $\leftarrow$ [S, func\_value, assignations\_counter] \\
+                }
+            }
+            return current\_population[0][0]      \\
+    	 	}
+	\end{algorithm}
+	
+	
+	
+	La búsqueda local suave (algoritmo \ref{algo:BLS}) se basará en ir optimizando los genes de la partición (encontrando el mejor cluster para ellos dadas el resto de asignaciones) en orden aleatorio. Cuando en una iteración no se produzcan cambios en el cromosoma diremos que falla. Permitiremos como mucho $max\_failures$ fallos para que no se desperdicien evaluaciones de la función objetivo en cromosomas de mucha calidad. Para el parámetro $max\_failures$ utilizaremos el valor $0.1 * numero\_de\_instancias$ como se indica en el guión. 
+	
+	Vemos finalmente cómo se puede combinar esta búsqueda local suave con el algoritmo genético generacional que ya vimos para dar lugar a un algoritmo memético (algoritmo \ref{algo:memetico}). Comprobamos que el algoritmo es bastante similar al algoritmo generacional, pero incorporando un bucle en el que se producen un determinado número de generaciones $generation\_per\_ls$ (como lo haría el algoritmo generacional) y tras este bucle se pasa a usar la búsqueda local suave que acabamos de explicar. Es de señalar que el diseño del algoritmo es de forma que las 3 variantes que se nos piden en la práctica, \textit{AM-(10,1.0)}, \textit{AM-(10,0.1)} y \textit{AM-(10,0.1mej)} se pueden usar simplemente cambiando los argumentos de la función. 
+	
+	En concreto, el parámetro $generation\_per\_ls$ hace referencia al número de generaciones que se producen antes de hacer las búsquedas locales suaves (en las tres variantes es $generation\_per\_ls=10$). El parámetro $perc\_ls$ se refiere al porcentaje de la población que se utiliza como punto de partida para las búsquedas locales (cada BLS tomará una partición como punto de partida) y toma los valores $1.0$, $0.1$ y $0.1$ respectivamente en cada variante del algoritmo. Y el parámetro $best\_population$ sirve para indicar si para empezar las búsquedas locales se deben tomar los mejores individuos de la población o tomarlos de forma aleatoria (este parámetro solo es $True$ en la última variante). Las probabilidades de cruce y de mutación son las mismas que usamos en los algoritmos generacionales ($0.7$ y $0.001$), pero el tamaño de la población esta vez es de $10$. Finalmente, cabe señalar también que el operador de cruce que se ha usado en las tres variantes es el de cruce por segmento fijo, ya que este es el que mejor ha funcionado (aunque no por mucho) en los algoritmos generacionales. 
+	
+	
+
+    \clearpage
+	\section{Procedimiento de desarrollo}
+	
+	Todo el código, desde la lectura de datos hasta los algoritmos, se ha implementado en $Python$ y se encuentra en la carpeta \textit{Software}. En concreto, los algoritmos se encuentran en el fichero \textit{algoritmos.py}. La función objetivo y estadísticos comunes a ambos algoritmos explicados en la sección \ref{sec:comun} se encuentra en el fichero \textit{funciones\_auxiliares\_y\_estadisticos.py}. Por otro lado, las funciones dedicadas a la lectura y carga de los conjuntos de datos se encuentran en el fichero \textit{leer\_datos.py}.
+	
+	Finalmente, se han desarrollado dos Jupyter Notebook (en $Python$ también). La primera con el objetivo de, usando las funciones definidas en los mencionados ficheros, hacer las ejecuciones que se nos requieren en el guión de una forma clara y sin distracciones y obtener las tablas que se nos pide (así como exportarlas al formato $Excel$). Esta Notebook se llama \textit{Ejecución\_y\_resultados.ipynb} y para la \textbf{replica de los resultados}, se recomienda ejecutarla directamente (las semillas están fijadas en ella). La segunda Notebook, \textit{Análisis\_resultados.ipynb}, se ha usado para analizar los resultados y realizar varias visualizaciones; se adjunta parte de ella en las siguientes páginas de esta memoria.
+	
+	\subsection{Entorno y paquetes}
+Para el desarrollo del proyecto se ha trabajado con \href{https://www.anaconda.com/download/}{Anaconda} en Windows 10;  en concreto con Python y Jupyter Notebook. Un ordenador con una versión instalada de Python 3 será requerido. Específicamente, se ha usado la version Python 3.7.3. Para instalarla, puedes ejecutar en Anaconda Prompt:
+\begin{lstlisting}
+conda install python=3.7.3
+\end{lstlisting}
+Los paquetes NumPy (1.16.2) y Matplotlib (3.0.3) son usados, los puedes obtener con la herramienta pip:
+\begin{lstlisting}
+pip3 install numpy
+pip3 install matplotlib
+\end{lstlisting}
+
+Los siguientes paquetes son también requeridos para ejecutar todo el código:
+\begin{itemize}
+    \item \href{https://seaborn.pydata.org/}{seaborn} (0.9.0) para mejorar las visualizaciones.
+    \item \href{https://pandas.pydata.org/}{pandas} (0.24.2) para tratar con los resultados, crear las tablas y trabajar con ellas.
+\end{itemize}
+Los puedes instalar con conda:
+\begin{lstlisting}
+conda install -c anaconda seaborn
+conda install -c anaconda pandas
+\end{lstlisting}
+	
+\clearpage
+\section{Análisis de los resultados}
+En esta sección describiremos los experimentos realizados y estudiáremos los resultados obtenidos. 
+\clearpage
+19
+\clearpage
+20
+\clearpage
+21
+\clearpage
+22
+\clearpage
+23
+\clearpage
+
+\section{Extra: Algoritmo memético con búsqueda local normal (no suave)}
+
+\clearpage
+25
+\clearpage
+26
+
+
+\end{document}

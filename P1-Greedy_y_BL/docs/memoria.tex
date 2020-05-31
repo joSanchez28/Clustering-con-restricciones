@@ -1,0 +1,378 @@
+\documentclass[11pt,a4paper]{article}
+
+% Packages
+\usepackage[utf8]{inputenc}
+\usepackage[spanish, es-tabla]{babel}
+\usepackage{caption}
+\usepackage{listings}
+\usepackage{adjustbox}
+%\usepackage{enumitem}
+\usepackage{boldline}
+\usepackage{amssymb, amsmath}
+\usepackage[margin=1in]{geometry}
+\usepackage{xcolor}
+%\usepackage{soul}
+\usepackage{enumerate}
+\usepackage{hyperref}
+\usepackage{graphics, graphicx, float}
+\usepackage{minted}
+
+% Meta
+\title{Problema de Agrupamiento con Restricciones (PAR)
+	\\\medskip \large Técnicas de búsqueda local y algoritmos greedy \\\medskip
+	\large Metaheurísticas: Práctica 1.b, Grupo MH2 (Jueves de 17:30h a 19:30h)}
+\author{Jorge Sánchez González - 75569829V \\ jorgesg97@correo.ugr.es}
+\date{ \today }
+
+% Custom
+\providecommand{\abs}[1]{\lvert#1\rvert}
+\setlength\parindent{0pt}
+\definecolor{Light}{gray}{.90}
+\newcommand\ddfrac[2]{\frac{\displaystyle #1}{\displaystyle #2}}
+\setlength{\parindent}{1.5em} %sangria
+
+% Displaying code with lstlisting
+\lstset { %
+	language=C++,
+	backgroundcolor=\color{black!5}, % set backgroundcolor
+	basicstyle=\footnotesize,% basic font setting
+}
+
+\usepackage[ruled]{algorithm2e}
+
+
+\begin{document}	
+	
+	\maketitle 
+	\newpage
+	\tableofcontents
+	\newpage
+	
+	
+	\section{El problema}
+	
+	\subsection{Descripción del problema}\label{sec:problema}
+	El \textbf{agrupamiento} o \textbf{análisis de clusters} clásico (en inglés, \emph{clustering}) es un problema que persigue la clasificación de objetos de acuerdo a posibles similitudes entre ellos. Así, se trata de una técnica de aprendizaje no automático que permite clasificar en grupos (desconocidos a priori) objetos de un conjunto de datos que tienen características similares.
+	
+    El \textbf{Problema del Agrupamiento con Restricciones (PAR)} (en
+    inglés, Constrained Clustering, CC) es una
+    generalización del problema del agrupamiento clásico.
+    Permite incorporar al proceso de agrupamiento un nuevo tipo
+    de información: las restricciones. Al incorporar esta información la tarea de aprendizaje deja de ser no supervisada y se convierte en semi-supervisada. 
+    
+    El problema consiste en, dado un conjunto de datos $X$ con $n$ instancias, encontrar una partición $C$ del mismo que minimice la desviación general y cumpla con las restricciones del conjunto de restricciones $R$. En nuestro caso concreto, solo consideramos restricciones de instancia (Must-Link o Cannot-Link) y todas ellas las interpretaremos como restricciones débiles (Soft); con lo que la partición $C$ del conjunto de datos $X$ debe minimizar el número de restricciones incumplidas pero puede incumplir algunas. Formalmente, buscamos
+    $$ \text{Minimizar } f = \hat{C} + \lambda * infeasibility$$
+	
+	donde:
+	\begin{itemize}
+		\item $C$ es una partición (una solución al problema), que consiste en una asignación de cada instancia a un cluster.
+		\item $\hat{C}$ es la desviación general de la partición $C$, que se define como la media de las desviaciones intra-cluster.
+		\item $infeasibility$ es el número de restricciones que $C$ incumple.
+		\item $\lambda$ es un hyperparámetro a ajustar (en función de si le queremos dar más importancia a las restricciones o a la desviación general).
+		
+	\end{itemize}
+
+	\subsection{Conjuntos de datos considerados}
+	Trabajaremos con 6 instancias del PAR generadas a partir de los 3 conjuntos de datos siguientes:
+	\begin{enumerate}
+        \item Iris: Información sobre las características de tres tipos de flor de Iris. Se trata de 150 instancias con 4 características por cada una de ellas. Tiene 3 clases ($k = 3$).
+        \item Ecoli: Contiene medidas sobre ciertas características de diferentes tipos de células. Se trata de 336 instancias con 7 características. Tiene 8 clases ($k = 8$).
+        \item Rand: Está formado por tres agrupamientos bien diferenciados generados en base a distribuciones normales ($k = 3$). Se trata de 150 instancias con 2 características.
+  \end{enumerate}
+    
+    Para cada conjunto de datos se trabaja con 2 conjuntos de restricciones, correspondientes al 10\% y 20\% del total de restricciones posibles.
+	
+	
+	\section{Descripción de la aplicación de los algoritmos}\label{sec:comun}
+	
+	En esta sección se describen las consideraciones comunes a los distintos algoritmos. Se incluyen la representación de las soluciones, la función objetivo y los operadores comunes a los distintos algoritmos. Ya que los únicos puntos en común de la búsqueda local y la técnica greedy son la función objetivo y la representación de las soluciones, no estudiaremos ningún operador común. No se han incluido tampoco los detalles específicos de ninguno de los algoritmos en esta sección.  \\
+	
+	Una primera consideración general es el hecho de que la distancia usada como medida de cercanía (o similitud) entre las distintas instancias y clusters es la distancia euclídea. \\
+	
+	El lenguaje utilizado para la implementación de la práctica ha sido \textbf{Python}. 
+	
+	\subsection{Representación de la soluciones}
+	Las soluciones a nuestro problema serán las llamadas \textit{particiones}, que asignan a cada instancia del conjunto de datos uno de los $k$ clusters. Aunque existen varias formas de representar una partición, por simplicidad se ha decidido utilizar la misma forma para ambos algoritmos (tanto el Greedy como el de búsqueda local). En concreto, respresentamos una partición de un conjunto de $n$ instancias en $k$ clusters con una lista S de tamaño $n$ cuyos valores son enteros $S_i \in \{0,1,2,...,k-1\}$. Así, el valor de la posición $i$ del vector, $S_i$, indica el cluster al que la i-ésima instancia, $x_i$, ha sido asignada. 
+	
+	Por verlo con un ejemplo, la representación será de la siguiente forma:
+
+	\begin{lstlisting}
+	partition = [0,0,0,5,0,1,1,1,1,1,2,3,1,1,1,...]
+	\end{lstlisting}
+	Esta partición indicaría, por ejemplo, que la instancia $x_0$ se ha asignado al cluster número 0, $c_0$, y que la instancia $x_3$ se ha asignado al cluster $c_5$. 
+	
+	Cabe mencionar también que durante la ejecución de los algoritmos, las particiones en proceso de construcción tendrán sus valores en $\{-1,0,1,2,...,k-1\}$. Cuando una posición $i$ tenga el valor $-1$, esto indicará que aún no se le ha asignado ningún cluster a la instancia $x_i$.
+	
+	\subsection{Función objetivo}
+	Como hemos visto en la seccion anterior (\ref{sec:problema}) para calcular la función objetivo se necesita saber tanto la desviación general de la partición, $\hat{C}$, como el número de restricciones que esta viola, $infeasibility$. 
+	
+	$$f(C) = \hat{C} + \lambda * infeasibility$$
+	
+	En pseudocódigo:
+	\begin{algorithm}
+	 	\caption{objective\_function}
+	 	\KwData{Conjunto de datos $X$, partición en forma de vector $S$, lista de restricciones $constraints\_list$, lista de centroides $centroids$, hiperparámetro $lambda$}
+	 	\KwResult{function\_value}
+	 	\Begin{
+	 	    dev $\leftarrow$ general\_deviation(X, S, centroids) \\
+	 	    inf $\leftarrow$ $infeasibility$(S, constraints\_list) \\
+            function\_value $\leftarrow$ dev + lambda * inf\\
+	 		return function\_value \\
+	 	}
+	\end{algorithm}
+	
+	El hyperparámetro $\lambda$ que se usará por defecto será el mínimo indicado en las diapositivas del Seminario 2, es decir, el cociente entre la distancia máxima existente en el conjunto de datos y el número de restricciones del problema. 
+	
+	Cabe mencionar que la función objetivo como tal solo será usada por el algoritmo de búsqueda local, ya que el algoritmo Greedy usará la desviación general y la infactibilidad en diferentes etapas (y por separado). De cualquier manera, las soluciones de ambos algoritmos van a ser evaluadas con esta función.
+	\subsubsection{Desviación general de una partición}
+	La desviación general de una partición se define como la media de las distancias medias intra-cluster, esto es,
+	$$\hat{C} = \frac{1}{k} \sum_{c_i \in C} \hat{c_i}.$$ Donde las distancias medias intra-cluster se definen a su vez como $$\hat{c_i} = \frac{1}{|c_i|} \sum_{\vec{x_j} \in c_i}distance(\vec{x_j}, \vec{\mu_i}).$$ En pseudocódigo:
+	
+    \begin{algorithm}
+	 	\caption{mean\_dist\_intra\_cluster}
+	 	\KwData{Conjunto de datos $X$, partición $S$, cluster del que queremos calcular su distancia intra cluster $cluster\_id$, centroide del cluster $centroid$}
+	 	\KwResult{distance\_intra\_cluster}
+	 	\Begin{
+	 	    $Y$ $\leftarrow$ instancias\_asignadas\_al\_cluster(X, S, cluster\_id)\\
+	 	    distances $\leftarrow$ list([ ]) \\
+	 	    \ForEach{ $y \in Y$ }{
+	 	        distances.append(distance(y, centroid))
+	 	    }
+	 	    distance\_intra\_cluster $\leftarrow$ media(distances) \\
+	 		return distance\_intra\_cluster \\
+	 	}
+	\end{algorithm}
+	\begin{algorithm}
+	 	\caption{general\_deviation}
+	 	\KwData{Conjunto de datos $X$, partición $S$, lista de centroides $centroids$}
+	 	\KwResult{deviation}
+	 	\Begin{
+	 	    cluster\_ids $\leftarrow$ \{0,1,...,longitud(centroids)-1\} \\
+	 	    intra\_cluster\_distances $\leftarrow$ list([ ]) \\
+	 	    \ForEach{$c_{id} \in cluster\_ids$}{
+	 	        d $\leftarrow$ mean\_dist\_intra\_cluster(X, S, $c_{id}$, centroids[$c_{id}$])\\
+	 	        intra\_cluster\_distances.append(d)\\
+	 	    }
+	 	    deviation $\leftarrow$ media(intra\_cluster\_distances) \\
+	 		return deviation \\
+	 	}
+	\end{algorithm}
+	
+    \subsubsection{Infactibilidad}
+    La infactibilidad de una partición ($infeasibility$) se define como el número de restricciones que incumple. Por ello para calcularla utilizamos una función auxiliar, \textit{V}, que nos va a decir, dada una partición, y un par de instancias con un valor de restricción (-1,0 o 1), si la partición incumple alguna restricción asociada a las dos instancias. Por otro lado, cabe destacar también que usamos la lista de restricciones, y no la matriz de restricciones, para recorrer todas las restricciones para calcular el $infeasibility$ de una manera más eficiente.
+    \begin{algorithm}
+	 	\caption{V (si se incumple alguna restricción o no)}
+	 	\KwData{Índice $i$ de la instancia $x_i$, índice $j$ de la instancia $x_j$, partición $S$, valor de restricción $constraint\_value$)}
+	 	\KwResult{incumplimiento}
+	 	\Begin{
+	 	    incumplimiento\_ML $\leftarrow$ ($constraint\_value == 1$ and $S\left[i\right] \neq  S\left[j\right]$)\\
+	 	    incumplimiento\_CL $\leftarrow$ ($constraint\_value == -1$ and $S\left[i\right] ==  S\left[j\right]$)\\
+	 	    incumplimiento $\leftarrow$ (incumplimiento\_ML or incumplimiento\_CL) \\
+	 		return incumplimiento \\
+	 	}
+	\end{algorithm}
+	\begin{algorithm}
+	 	\caption{$infeasibility$}
+	 	\KwData{Partición $S$, lista de restricciones $constraints\_list$}
+	 	\KwResult{infeasibility}
+	 	\Begin{
+	 	    infeasibility $\leftarrow$ 0\\
+	 	    \ForEach{ $(i,j,contraint\_value) \in $ constraints\_list}{
+	 	        infeasibility $\leftarrow$ infeasibility + V(i, j, S, constraint\_value) \\
+	 	    }
+	 		return infeasibility \\
+	 	}
+	\end{algorithm}
+	\section{Algoritmos}
+	En esta práctica se han usado dos algoritmos, el Greedy y el de Búsqueda Local. A continuación se describirán mostrando pseudocódigo y comentando los aspectos más importantes.
+	\subsection{Algoritmo Greedy}
+	La solución Greedy para el PAR consiste en modificar el algoritmo k-medias para tener en cuenta las restricciones. Para la solución greedy (al igual que para la de búsqueda local) se hace una interpretación débil de las restricciones. De esta forma, para cada instancia se llevará a cabo la asignación que menos restricciones viole y que más disminuya la desviación general. Las particiones se construirán como se ha comentado anteriormente (en forma de lista S de tamaño $n = numero\_de\_instancias$). 
+	
+	Como se ha discutido en clase, este algoritmo puede llegar a formar ciclos e iterar de forma infinita. Es decir, puede saltar de una partición a otra y luego volver a la misma y así sucesivamente. En concreto, podría formar ciclos de una longitud arbitraria N,
+	$$(particion_1 \longrightarrow particion_2 \longrightarrow ... \longrightarrow particion_N \longrightarrow particion_1 \longrightarrow ... ).$$
+	En la siguiente implementación se contemplan los ciclos de longitud 1 (debido a que experimentalmente son los que más han surgido y a que su control no constituye una gran desventaja en eficiencia).
+	La descripción en pseudocódigo se ha dividido en dos partes. En primer lugar se describe el algoritmo dados los centroides iniciales. En segundo lugar se describe la forma de generar dichos centroides iniciales. \\
+	
+	\begin{algorithm}[H]
+	 	\caption{Algoritmo Greedy - COPKM}
+	 	\KwData{Conjunto de datos $X$, matriz de restricciones $const\_matrix$, lista de restricciones $const\_list$, lista de centroides iniciales $initial\_centroids$}
+	 	\KwResult{Partición solución S}
+	 	\Begin{
+	 	    k $\leftarrow$ longitud(initial\_centroids)\\
+	 	    n $\leftarrow$ longitud(X)\\
+	 	    RSI $\leftarrow$ list([0,1,...,n-1])\\
+	 	    RSI $\leftarrow$ RandomShuffle(RSI) \\
+	 	    S $\leftarrow$ list(longitud = n, valores = -1)\\
+	 	    S\_prev $\leftarrow$ list(longitud = n, valores = -1)\\
+	 	    change $\leftarrow$ True\\
+	 	    cycle $\leftarrow$ False \\
+	 	    \While{change and not cycle}{
+	 	        change $\leftarrow$ False \\
+	 	        S\_new = list(longitud = n, valores = -1)\\
+	 	        1.-Asignamos las instancias a cada cluster:\\
+	 	        \ForEach{$i \in RSI$}{
+	 	            1.1 Calculamos el incremento en infeasibility que produce la asignación de x\_i a cada cluster c\_j y guardamos los índices j que producen menos incremento.\\
+	 	            incrementos $\leftarrow$ incrementos\_en\_inf(i, S\_new, const\_matrix) \\
+                    less\_incr\_clusters $\leftarrow$ argmin(incrementos)  \\
+                    1.2-De entre las asignaciones (js) que producen menos incremento en infeasibility, seleccionamos la asociada con el centroide $\mu_j$ mas cercano a x\_i \\
+                    distances $\leftarrow$ [distance(X[i], centroids[j]) for j in less\_incr\_clusters] \\
+                    closest $\leftarrow$ less\_incr\_clusters[argmin(distances)] \\
+                    S\_new[i] $\leftarrow$ closest \\
+                    \If{S\_new[i] $\neq$ S[i]}{
+                        change $\leftarrow$ True\\
+                    }
+	 	        }
+	 	        2.-Comprobamos que no estamos atrapados en un ciclo de longitud 1\\
+	 	        \If{listas\_son\_iguales(S\_prev, S\_new)}{
+	 	            cycle $\leftarrow$ True\\
+	 	        }
+	 	        3.-Actualizamos la partición y los centroides de cada cluster\\
+	 	        S\_prev $\leftarrow$ S \\
+	 	        S $\leftarrow$ S\_new \\
+	 	        \ForEach{$j \in \{0,1,2,...,k-1\}$}{
+	 	            centroids[j] $\leftarrow$ media\_de\_instancias\_en\_el\_cluster(X, S, cluster\_id = j)\\
+	 	        }
+	 	    }
+	 		return S \\
+	 	}
+	\end{algorithm} 
+	\clearpage
+	\begin{algorithm}[H]
+	 	\caption{centroids\_initialization}
+	 	\KwData{Conjunto de datos $X$, número de clusters $k$}
+	 	\KwResult{Lista de centroides centroids}
+	 	\Begin{
+	 	    - Dominio de una caracteristica son su valor mínimo y su máximo en el dataset\\
+	 	    dominios $\leftarrow$ dominios\_de\_cada\_caracteristica(X)\\
+	 	    centroids $\leftarrow$ list([ ])\\
+	 	    \ForEach{ $j \in \{0,1,...,k-1\}$}{
+	 	        centroid\_j = list([ ]) \\
+	 	        \ForEach{ $d \in dominios$}{
+	 	            centroid\_j.append(aleatorio\_entre(min(d),max(d)))\\
+	 	        }
+	 	        centroids.append(centroid\_j)
+	 	    }
+	 		return centroids \\
+	 	}
+	\end{algorithm}
+	
+	
+
+
+	\subsection{Búsqueda local}
+	
+	Tratamos ahora el algoritmo búsqueda local paso por paso. Primero describimos como generar una partición de forma aleatoria que nos servirá como punto de partida. \\
+	\begin{algorithm}[H]
+	 	\caption{generate\_initial\_sol}
+	 	\KwData{Conjunto de datos $X$, número de clusters $k$}
+	 	\KwResult{Una partición $S$}
+	 	\Begin{
+	 	    n $\leftarrow$ longitud(X)
+	 	    S $\leftarrow$ list([ ])\\
+	 	    \ForEach{ $i \in \{0,1,...,n-1\}$}{
+	 	        S.append(entero\_aleatorio\_entre(0,k-1))\\
+	 	    }
+	 		return S \\
+	 	}
+	\end{algorithm}
+	Una vez tengamos la particion inicial, en cada iteración exploramos el vecindario hasta encontrar una solución mejor y sustituimos la actual por la encontrada. Repetiremos este proceso hasta que exploremos todo el vecindario y no encontremos una solución mejor o hasta que hayamos evaluado la función objetivo 100000 veces. \\
+	
+	\begin{algorithm}
+	 	\caption{Algoritmo de Búsqueda Local}
+	 	\KwData{Conjunto de datos $X$, lista de restricciones $const\_list$, número de clusters $k$, hiperparámetro $lambda$}
+	 	\KwResult{Partición solución S}
+	 	\Begin{
+	 	    n $\leftarrow$ longitud(X)\\
+	 	    -Declaramos un diccionario 'assignations\_counter' para vigilar cuantas instancias tiene cada cluster asignadas (para asegurar que nunca tienen 0) \\
+	 	    valid\_partition $\leftarrow$ False \\
+            \While{not valid\_partition}{
+                S $\leftarrow$ generate\_initial\_sol(X, k)\\
+                assignations\_counter $\leftarrow$ assignations\_counts(S)\\
+                \If{no\_zero\_values(assignations\_counter)}{ 
+                    valid\_partition $\leftarrow$ True \\
+                }
+            }
+            current\_func\_value $\leftarrow$ objective\_function(X, S, const\_list, lambda) \\
+            counter $\leftarrow$ 1 (Número de veces que se evalua la función objetivo) \\
+            -Creamos una lista de parejas [(0,+1),(0,+2),..]. Esta lista representará todas las operaciones de movimiento posibles desde una partición dada. \\
+            virtual\_neighborhood $\leftarrow$ [(index, add) for index in \{0,1,...,n-1\} for add in \{1,2,...,k\}] \\
+            found\_better\_sol $\leftarrow$ True \\
+	 	    \While{counter $\leq$ 100000 and found\_better\_sol}{
+	 	        found\_better\_sol $\leftarrow$ False \\
+	 	        virtual\_neighborhood $\leftarrow$ RandomShuffle(virtual\_neighborhood) \\
+	 	        i $\leftarrow$ 0 \\
+	 	        \While{counter $\leq$ 100000 and not found\_better\_sol and i $<$ n}{
+	 	            operation $\leftarrow$ virtual\_neighborhood[i] \\
+	 	            -Ejecutamos la operación \\
+	 	            tmp $\leftarrow$ S[operation[0]] \\
+	 	            S[operation[0]] $\leftarrow$ (S[operation[0]] + operation[1]) mod k \\
+                    func\_val $\leftarrow$ objective\_function(X, S, const\_list, lambda) \\
+                    counter $\leftarrow$ counter + 1 \\
+                    -Si llegamos a una mejor partición que sea válida, la elegimos. \\
+                    \eIf{func\_val $<$ current\_func\_value and assignations\_counter[tmp] $>$ 1}{ 
+                        assignations\_counter[tmp] $\leftarrow$  assignations\_counter[tmp] - 1 \\
+                        assignations\_counter[partition[operation[0]]] $\leftarrow$ assignations\_counter[partition[operation[0]]] + 1 \\
+                        current\_func\_value $\leftarrow$ func\_val \\
+                        found\_better\_sol $\leftarrow$ True \\
+                    }
+                    {
+                    -Si no, volvemos a la particición anterior \\
+                        S[operation[0]] $\leftarrow$ tmp  \\
+                    }
+                    i $\leftarrow$ i + 1 \\
+	 	        }
+	 	    }
+	 		return S \\
+	 	}
+	\end{algorithm}
+
+    Cabe destacar dos detalles del algoritmo. El primero es la utilización de un diccionario \textit{assignations\_counter} con el objetivo de comprobar que ninguna partición de las que aceptamos durante las distintas iteraciones asigna cero instancias a algún cluster (condición que se requería).
+    
+    El segundo detalle está en la exploración de los vecindarios. Como se indica en el pseudocódigo, se usa una lista de pares \textit{(indice\_de\_instancia, adición)}, donde $indice\_de\_instancia \in \{0,1,...,n-1\}$ y $adicion \in \{1,2,...,k-1\}$. Esto es una manera ingeniosa de representar el vecindario de forma virtual. De esta forma no tenemos que generar el vecindario en cada iteración, sino simplemente barajar esta lista y generar todos los vecinos mediante ella. En concreto lo que hacemos es
+    $$\text{particion}[\text{indice\_de\_instancia}]= (\text{particion}[\text{indice\_de\_instancia}] + \text{adición}) \text{ mod } k$$
+    para generar una partición vecina. De esta forma cubrimos todas las particiones del vecindario asociado a la operación que se nos indica en el guión.
+	
+
+
+	\section{Procedimiento de desarrollo}
+	
+	Todo el código, desde la lectura de datos hasta los algoritmos, se ha implementado en $Python$ y se encuentra en la carpeta \textit{Software}. En concreto, los algoritmos se encuentran en el fichero \textit{algoritmos.py}. La función objetivo y estadísticos comunes a ambos algoritmos explicados en la sección \ref{sec:comun} se encuentra en el fichero \textit{funciones\_auxiliares\_y\_estadisticos.py}. Por otro lado, las funciones dedicadas a la lectura y carga de los conjuntos de datos se encuentran en el fichero \textit{leer\_datos.py}.
+	
+	Finalmente, se han desarrollado dos Jupyter Notebook (en $Python$ también). La primera con el objetivo de, usando las funciones definidas en los mencionados ficheros, hacer las ejecuciones que se nos requieren en el guión de una forma clara y sin distracciones y obtener las tablas que se nos pide (así como exportarlas al formato $Excel$). Esta Notebook se llama \textit{Ejecución\_y\_resultados.ipynb} y para la \textbf{replica de los resultados}, se recomienda ejecutarla directamente (las semillas están fijadas en ella). La segunda Notebook, \textit{Análisis\_resultados.ipynb}, se ha usado para analizar los resultados y realizar varias visualizaciones; se adjunta parte de ella en las siguientes páginas de esta memoria.
+	
+	\subsection{Entorno y paquetes}
+Para el desarrollo del proyecto se ha trabajado con \href{https://www.anaconda.com/download/}{Anaconda} en Windows 10;  en concreto con Python y Jupyter Notebook. Un ordenador con una versión instalada de Python 3 será requerido. Específicamente, se ha usado la version Python 3.7.3. Para instalarla, puedes ejecutar en Anaconda Prompt:
+\begin{lstlisting}
+conda install python=3.7.3
+\end{lstlisting}
+Los paquetes NumPy (1.16.2) y Matplotlib (3.0.3) son usados, los puedes obtener con la herramienta pip:
+\begin{lstlisting}
+pip3 install numpy
+pip3 install matplotlib
+\end{lstlisting}
+
+Los siguientes paquetes son también requeridos para ejecutar todo el código:
+\begin{itemize}
+    \item \href{https://seaborn.pydata.org/}{seaborn} (0.9.0) para mejorar las visualizaciones.
+    \item \href{https://pandas.pydata.org/}{pandas} (0.24.2) para tratar con los resultados, crear las tablas y trabajar con ellas.
+\end{itemize}
+Los puedes instalar con conda:
+\begin{lstlisting}
+conda install -c anaconda seaborn
+conda install -c anaconda pandas
+\end{lstlisting}
+	
+\clearpage
+\section{Análisis de los resultados}
+En esta sección describiremos los experimentos realizados y estudiáremos los resultados obtenidos. 
+\clearpage
+12
+\clearpage
+13
+\clearpage
+14
+\clearpage
+\section{Extra: Experimentando con el hiperparámetro $\lambda$}
+
+
+\end{document}
